@@ -9,13 +9,19 @@ from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 from openai import AzureOpenAI
-# from mcp_host.mock_openai import MockAzureOpenAI as AzureOpenAI
+from mcp_host.mock_openai import MockAzureOpenAI
 from mcp_host.prompts import SYSTEM_PROMPT
 from datetime import datetime
 import pytz
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("azure_openai_mcp_host")
+
+# 根据环境变量选择实现
+if os.getenv('MOCK', '').lower() == 'true':
+    OpenAIClient = MockAzureOpenAI
+else:
+    OpenAIClient = AzureOpenAI
 
 class AzureOpenAIMCPHost:
     """
@@ -25,10 +31,10 @@ class AzureOpenAIMCPHost:
     
     def __init__(self):
         """Initialize the Azure OpenAI MCP Host with environment variables."""
-        self.client = AzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        self.client = OpenAIClient(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY", "mock-key"),  # mock 模式下使用默认值
             api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", "https://mock-endpoint.openai.azure.com")
         )
         self.model = os.getenv("AZURE_OPENAI_MODEL", "gpt-4")
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
@@ -241,8 +247,8 @@ class AzureOpenAIMCPHost:
                 # 首先将助手的消息添加到历史中
                 messages.append(assistant_message.model_dump())
                 
-                # 检查是否达到最终答案
-                if "Final Answer:" in content:
+                # 检查是否达到最终答案 - 添加 None 检查
+                if content is not None and "Final Answer:" in content:
                     response_entry["is_final"] = True
                     all_responses.append(response_entry)
                     break

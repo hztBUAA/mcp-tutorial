@@ -73,6 +73,7 @@ class MockChatCompletions:
         self.call_count += 1
         
         if self.call_count == 1:
+            # 第一次调用：搜索论文
             tool_call = MockToolCall(
                 name="search-papers-normal",
                 arguments={
@@ -83,12 +84,30 @@ class MockChatCompletions:
                     "size": 5
                 }
             )
-            message = MockMessage(content=None, tool_calls=[tool_call])
+            message = MockMessage(
+                content=None,
+                tool_calls=[tool_call]
+            )
             return MockResponse([MockChoice(message)])
             
-        else:
+        elif self.call_count == 2:
+            # 第二次调用：分析结果
             message = MockMessage(
-                content="Based on my search, I found several papers about machine learning published between 2020 and 2023. These papers cover various topics including deep learning, reinforcement learning, and natural language processing."
+                content="""基于搜索结果，我找到了几篇关于量子计算的重要论文。让我为您总结一下。
+
+Final Answer: 我找到了以下关于量子计算的最新研究：
+1. "量子计算：现状与未来" (2023)
+2. "量子算法的最新进展" (2023)
+3. "量子优越性的实验验证" (2022)
+
+这些论文涵盖了量子计算的最新发展，包括算法优化、硬件实现和应用案例。"""
+            )
+            return MockResponse([MockChoice(message)])
+        
+        else:
+            # 默认响应
+            message = MockMessage(
+                content="我已经完成了搜索和分析。\n\nFinal Answer: 这是一个模拟响应。"
             )
             return MockResponse([MockChoice(message)])
 
@@ -99,5 +118,5 @@ class MockAzureOpenAI:
         """Initialize the mock client."""
         self.api_key = kwargs.get("api_key", "mock-api-key")
         self.api_version = kwargs.get("api_version", "2024-02-01")
-        self.api_base = kwargs.get("api_base", "https://mock-endpoint.openai.azure.com")
+        self.azure_endpoint = kwargs.get("azure_endpoint", "https://mock-endpoint.openai.azure.com")
         self.chat = type('MockChat', (), {'completions': MockChatCompletions()})()

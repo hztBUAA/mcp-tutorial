@@ -88,8 +88,29 @@
    ```bash
    # 创建 .env 文件
    cp .env.example .env
-   # 编辑 .env 文件，填入您的 API 密钥
    ```
+
+   有两种配置方式：
+
+   A. 使用 Mock 模式（快速上手）：
+   ```bash
+   # 在 .env 中设置
+   MOCK=True
+   ```
+   这种模式不需要 API 密钥，而是使用本项目开发的模拟Openai类，适合快速体验和开发测试。
+
+   B. 使用实际的 Azure OpenAI（生产环境）：
+   ```bash
+   # 在 .env 中设置
+   MOCK=False  # 或删除此行
+   AZURE_OPENAI_API_KEY=your_api_key
+   AZURE_OPENAI_ENDPOINT=your_endpoint
+   ```
+
+   > 💡 提示：
+   > - 开发和测试时推荐使用 Mock 模式，无需配置 API 密钥
+   > - Mock 模式提供模拟响应，可以帮助您快速理解系统工作方式
+   > - 生产环境请使用实际的 Azure OpenAI 配置
 
 5. **验证安装**：
    ```bash
