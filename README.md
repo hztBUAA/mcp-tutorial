@@ -22,24 +22,74 @@
 
 本项目包含三个核心组件，共同构成完整的 MCP 生态系统：
 
-- **MCP Server**：协议的服务端实现，封装 Bohrium OpenAPI 为标准化工具
-- **MCP Client**：与服务器建立 1:1 连接，处理会话请求和响应
-- **MCP Host**：集成 Azure OpenAI，实现大模型与工具的交互
+- **MCP Server** (`src/openapi_mcp_server/`)：
+  - 协议的服务端实现，封装 Bohrium OpenAPI 为标准化工具
+  - 提供了丰富的学术工具集，包括：
+    - 论文搜索（普通版、加强版、Pro版）
+    - 学者信息查询
+    - 知识库管理
+  - 需要 Bohrium OpenAPI 密钥进行认证
+  - 支持 SSE 传输方式
 
-这三个组件协同工作，使大模型能够无缝地发现和调用外部工具，从而增强其上下文理解和处理能力。
+- **MCP Host** (`src/mcp_host/`)：
+  - 集成了 MCP Client 与 LLM 的桥接层
+  - 内部包含：
+    - MCP Client：与 Server 建立 1:1 连接，处理会话请求和响应
+    - LLM 集成：支持 Azure OpenAI 或 Mock 实现
+  - 支持两种运行模式：
+    1. Mock 模式：使用内置的模拟响应，适合开发测试
+    2. Azure OpenAI 模式：连接真实的 GPT 模型，用于生产环境
+  - 实现了 ReAct 推理框架，能够迭代调用工具解决复杂问题
+
+- **命令行工具** (`src/cli/`)：
+  - 作为用户交互的入口
+  - 实例化并管理 MCP Host
+  - 提供命令行界面，支持：
+    - 单次查询模式
+    - 交互式会话模式
+  - 负责结果的格式化展示
+
+这三个组件的工作流程：
+1. MCP Server 启动并暴露标准化的工具接口
+2. MCP Host 中的 Client 与 Server 建立连接，获取可用工具列表
+3. 命令行工具接收用户输入，传递给 Host 处理
+4. Host 使用 LLM 分析请求，通过内部的 Client 调用 Server 提供的工具
+5. 结果通过命令行界面返回给用户
+
+---
 
 ---
 
 ## ⚙️ 系统要求
 
 - **Python**：3.11 或更高版本
-- **Azure OpenAI API 密钥**：用于 MCP Host 组件， 运行LLM
-- **Bohrium OpenAPI 访问密钥**：用于运行MCP Server，访问底层 API 服务
-- **Python 依赖**：见 `requirements.txt`
+
+- **Bohrium OpenAPI 密钥**（必需）：
+  1. 访问 [Bohrium 官网](https://bohrium.com)
+  2. 注册并登录账户
+  3. 进入"个人设置" > "API 密钥"
+  4. 创建新的访问密钥
+  > ⚠️ 注意：无论是开发测试还是生产环境，都需要配置 Bohrium API 密钥来启动MCP Server。 后续会开发server的mock版本。
+
+- **Azure OpenAI API 密钥**（可选）：
+  - 开发测试环境：
+    - 可以使用 Mock 模式，无需 Azure OpenAI API 密钥
+  
+  - 生产环境：
+    1. 访问 [Azure Portal](https://portal.azure.com)
+    2. 创建 Azure OpenAI 服务实例
+    3. 在"密钥和终结点"获取 API 密钥和终结点
+
+- **Python 依赖**：所有依赖在 `pyproject.toml` 中管理，按照安装步骤操作即可
 
 ---
 
 ## 🛠️ 安装步骤
+
+> 💡 快速开始提示：
+> - 必须配置 Bohrium API 密钥以使用 MCP Server
+> - 可以使用 Mock 模式（无需 Azure OpenAI 密钥）快速开始
+> - 生产环境建议使用 Azure OpenAI 模式获得更好的效果
 
 1. **克隆仓库**：
    ```bash
@@ -60,16 +110,11 @@
    ```
 
 3. **安装项目**：
-   
-   普通用户安装：
    ```bash
-   # 安装基本版本
+   # 普通用户安装
    pip install .
-   ```
-
-   开发者安装：
-   ```bash
-   # 以可编辑模式安装（适合开发者）
+   
+   # 开发者安装（源码可编辑模式）
    pip install -e .
 
    # 如果需要开发环境（包含 jupyter 支持等）
@@ -80,7 +125,7 @@
    ```
 
    > 💡 说明：
-   > - 普通用户使用 `pip install .` 即可，这会安装一个稳定版本
+   > - 普通用户使用 `pip install .` 即可，这会根据项目根目录的pyproject.toml文件安装一个稳定版本
    > - 开发者使用 `-e` 参数安装，这样修改源码后不需要重新安装
    > - 所有依赖都在 `pyproject.toml` 中管理，无需手动安装其他依赖
 
@@ -90,7 +135,7 @@
    cp .env.example .env
    ```
 
-   有两种配置方式：
+   选择以下配置方式之一：
 
    A. 使用 Mock 模式（快速上手）：
    ```bash
@@ -99,9 +144,9 @@
    ```
    这种模式不需要 API 密钥，而是使用本项目开发的模拟Openai类，适合快速体验和开发测试。
 
-   B. 使用实际的 Azure OpenAI（生产环境）：
+   B. 生产环境：
    ```bash
-   # 在 .env 中设置
+   # Azure OpenAI 配置
    MOCK=False  # 或删除此行
    AZURE_OPENAI_API_KEY=your_api_key
    AZURE_OPENAI_ENDPOINT=your_endpoint
@@ -123,6 +168,7 @@
 ## 常见问题
 
 1. 如果遇到 "ModuleNotFoundError" 错误：
+   - 检查是否在用正确的conda环境，因为新开的终端会重置为base的conda环境，需要重新`conda activate mcp_env`。
    - 这说明包或其依赖没有正确安装
    - 确保执行了 `pip install .` 命令（普通用户）或 `pip install -e .`（开发者）
    - 检查 Python 版本是否 >= 3.11
@@ -137,9 +183,6 @@
    pip install -e .  # 开发者
    ```
 
-3. 如果需要开发新功能：
-   - 使用 `-e` 模式安装，这样源码修改后会立即生效
-   - 可以通过 `pip list` 检查是否正确安装了本地包
 
 ---
 
