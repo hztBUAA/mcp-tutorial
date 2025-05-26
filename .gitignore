@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+src/openapi_mcp_server/paper/*.json
+src/openapi_mcp_server/**/*.json
+.env
+*.pyc
+outputs/
+.vscode
