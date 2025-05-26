@@ -58,8 +58,8 @@ class ScholarAPI:
     ) -> Dict:
         """搜索学者
         Args:
-            scholar_ids (List[str]): 学者ID列表
-            name (str): 学者名
+            scholar_ids (List[str]): 学者ID列表，如果为空，则不使用学者ID进行搜索。列表的每个item需要是scholar id的字符串形式
+            name (str): 学者名，如果为空，则不使用学者名进行搜索。不使用学者ID搜索时，学者名必传，用于模糊搜索学者，能够返回多个学者id的信息，可用于后续进一步的学者信息查询
             page (int, optional): 页码. Defaults to 1.
             page_size (int, optional): 每页数量. Defaults to 20.
             source (str, optional): 曝光来源. Defaults to "mix_search".

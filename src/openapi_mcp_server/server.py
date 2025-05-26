@@ -12,6 +12,7 @@ from typing import Optional, Dict, List, Any
 import requests
 import os
 from dotenv import load_dotenv
+import traceback
 
 # 加载.env文件
 load_dotenv()
@@ -270,11 +271,11 @@ async def handle_list_tools() -> list[types.Tool]:
                     "scholar_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "学者ID列表"
+                        "description": "学者ID列表，如果为空列表，则不使用学者ID进行搜索"
                     },
                     "name": {
                         "type": "string",
-                        "description": "学者名"
+                        "description": "学者名，如果为空，则不使用学者名进行搜索。不使用学者ID搜索时，学者名必传，用于模糊搜索学者，能够返回多个学者id的信息，可用于后续进一步的学者信息查询"
                     },
                     "page": {
                         "type": "integer",
@@ -295,7 +296,7 @@ async def handle_list_tools() -> list[types.Tool]:
                         "default": "mix_search"
                     }
                 },
-                "required": ["scholar_ids", "name"]
+                "required": []
             }
         ),
         types.Tool(
@@ -467,8 +468,8 @@ async def handle_call_tool(
         # 在handle_call_tool()中修改对应的处理逻辑
         elif name == "search-scholars":
             result = bor_api.scholar.search_scholars(
-                scholar_ids=arguments["scholar_ids"],
-                name=arguments["name"],
+                scholar_ids=arguments.get("scholar_ids", []),
+                name=arguments.get("name", ""),
                 page=arguments.get("page", 1),
                 page_size=arguments.get("page_size", 20),
                 source=arguments.get("source", "mix_search"),
@@ -639,10 +640,16 @@ async def handle_call_tool(
             raise ValueError(f"Unknown tool: {name}")
             
     except Exception as e:
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        logger.error(f"操作失败: {error_details}")  # 记录完整错误信息到日志
         return [
             types.TextContent(
                 type="text",
-                text=f"操作失败: {str(e)}"
+                text=f"操作失败: {type(e).__name__} - {str(e)}"  # 至少显示异常类型和消息
             )
         ]
 
