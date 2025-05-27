@@ -110,7 +110,7 @@ class ContextManager:
                 logger.info(f"达到压缩间隔({self.compression_interval}轮)但token数({current_tokens})未超过阈值({token_threshold})，不进行压缩")
         
         # 如果token数超出限制，强制压缩
-        elif current_tokens > self.token_limit:
+        elif current_tokens > token_threshold:
             logger.warning(f"token数量({current_tokens})超出限制({self.token_limit})，强制压缩")
             return await self._compress_context()
         
@@ -139,17 +139,32 @@ class ContextManager:
         if not messages_to_compress:
             return self.messages
 
-        # 创建单一的压缩提示
-        summary_prompt = {
-            "role": "user",
-            "content": f"""请将以下对话历史压缩为一条全面但简洁的总结，包括：
+        # 计算压缩提示的基础token数
+        base_prompt = """请将对话历史压缩为一条全面但简洁的总结，包括：
 1. 已经发现的关键信息。
-2. 重要的工具调用记录，包括工具名称，调用方式以及精简的调用结果。调用方式中的参数需要用json格式化。
+2. 重要的工具调用记录，包括工具名称，调用方式以及精简的调用结果。
 3. 当前的推理进展和结论
 
-对话历史：
-{json.dumps(messages_to_compress, ensure_ascii=False, indent=2)}
-"""
+对话历史："""
+        
+        base_tokens = len(self.encoding.encode(base_prompt))
+        available_tokens = self.token_limit - base_tokens - 1000  # 预留1000个token的余量
+        
+        # 从后向前截取消息，确保不超出token限制
+        selected_messages = []
+        current_tokens = 0
+        
+        for msg in reversed(messages_to_compress):
+            msg_tokens = len(self.encoding.encode(json.dumps(msg, ensure_ascii=False)))
+            if current_tokens + msg_tokens > available_tokens:
+                break
+            selected_messages.insert(0, msg)
+            current_tokens += msg_tokens
+
+        # 创建压缩提示
+        summary_prompt = {
+            "role": "user",
+            "content": f"{base_prompt}\n{json.dumps(selected_messages, ensure_ascii=False, indent=2)}"
         }
 
         try:

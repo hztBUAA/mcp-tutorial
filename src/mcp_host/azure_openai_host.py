@@ -41,7 +41,7 @@ class AzureOpenAIMCPHost:
         self.model = os.getenv("AZURE_OPENAI_MODEL", "gpt-4")
         self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
         self.mcp_session: Optional[ClientSession] = None
-        self.max_iterations = int(os.getenv("MAX_ITERATIONS", "10"))
+        self.max_iterations = int(os.getenv("MAX_ITERATIONS", "30"))
         self.temperature = float(os.getenv("TEMPERATURE", "0.7"))
         self.transport_type: Literal["stdio", "sse"] = cast(
             Literal["stdio", "sse"], 
