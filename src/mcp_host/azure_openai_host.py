@@ -423,7 +423,7 @@ class AzureOpenAIMCPHost:
                     
                     # 写入助手响应
                     if 'content' in response:
-                        f.write(f"Assistant: {response['content']}\n")
+                        f.write(f"Assistant: \n\n{response['content']}\n\n")
                     
                     # 写入工具调用结果（如果有）
                     if response.get('tool_calls'):
