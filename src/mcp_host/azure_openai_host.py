@@ -11,6 +11,7 @@ from mcp.client.sse import sse_client
 from openai import AzureOpenAI
 from mcp_host.mock_openai import MockAzureOpenAI
 from mcp_host.prompts import SYSTEM_PROMPT
+from mcp_host.context_manager import ContextManager
 from datetime import datetime
 import pytz
 
@@ -46,6 +47,13 @@ class AzureOpenAIMCPHost:
             os.getenv("MCP_TRANSPORT", "sse").lower()
         )
         self.tools: List[Union[types.Tool, types.Resource]] = []
+        
+        self.context_manager = ContextManager(
+            max_messages=10,
+            compression_interval=5,
+            openai_client=self.client,
+            deployment_name=self.deployment_name
+        )
         
     async def connect_to_server(self, server_command: Optional[List[str]] = None, 
                                server_url: Optional[str] = None,
@@ -197,6 +205,60 @@ class AzureOpenAIMCPHost:
             logger.error("Error details:", exc_info=True)
             return {"error": error_msg}
     
+    def _create_response_entry(self, iteration: int, assistant_message) -> Dict[str, Any]:
+        """创建响应条目"""
+        return {
+            "iteration": iteration,
+            "role": "assistant",
+            "content": assistant_message.content,
+            "tool_calls": None,
+            "is_final": False
+        }
+
+    async def _handle_tool_calls(self, tool_calls, response_entry) -> List[Dict[str, Any]]:
+        """处理工具调用"""
+        tool_results = []
+        response_entry["tool_calls"] = []
+        
+        for tool_call in tool_calls:
+            function_call = tool_call.function
+            tool_args = json.loads(function_call.arguments)
+            tool_result = await self._call_tool(function_call.name, tool_args)
+            
+            response_entry["tool_calls"].append({
+                "tool_name": function_call.name,
+                "tool_args": tool_args,
+                "tool_result": tool_result
+            })
+            
+            tool_results.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": function_call.name,
+                "content": json.dumps(tool_result)
+            })
+        
+        return tool_results
+
+    def _create_reflection_prompt(self, tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """创建反思提示"""
+        tool_observations = [
+            f"Tool '{result['name']}' returned: {result['content']}"
+            for result in tool_results
+        ]
+        
+        return {
+            "role": "user",
+            "content": (
+                "Based on the tool results:\n" + 
+                "\n".join(tool_observations) + "\n\n" +
+                "Please analyze these results and decide:\n" +
+                "1. What have we learned?\n" +
+                "2. Do we need more information?\n" +
+                "3. Are we ready for a Final Answer?\n"
+            )
+        }
+        
     async def process_query(self, user_query: str) -> List[Dict[str, Any]]:
         """
         Process user query with iterative tool calling.
@@ -211,10 +273,15 @@ class AzureOpenAIMCPHost:
         
         openai_tools = await self._convert_mcp_tools_to_openai_format()
         
-        messages = [
+        messages = await self.context_manager.add_message(
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Query: {user_query}\n\nLet's approach this step-by-step:"}
-        ]
+            iteration=0
+        )
+        
+        messages = await self.context_manager.add_message(
+            {"role": "user", "content": f"Query: {user_query}\n\nLet's approach this step-by-step:"},
+            iteration=0
+        )
         
         all_responses = []
         iteration = 0
@@ -244,8 +311,10 @@ class AzureOpenAIMCPHost:
                     "is_final": False
                 }
 
-                # 首先将助手的消息添加到历史中
-                messages.append(assistant_message.model_dump())
+                messages = await self.context_manager.add_message(
+                    assistant_message.model_dump(),
+                    iteration
+                )
                 
                 # 检查是否达到最终答案 - 添加 None 检查
                 if content is not None and "Final Answer:" in content:
@@ -270,42 +339,54 @@ class AzureOpenAIMCPHost:
                             "tool_result": tool_result
                         })
                         
-                        # 正确添加工具响应消息
-                        messages.append({
+                        tool_message = {
                             "role": "tool",
-                            "tool_call_id": tool_call.id,  # 确保这个 ID 与 assistant 消息中的 tool_call ID 匹配
+                            "tool_call_id": tool_call.id,
                             "name": function_call.name,
                             "content": json.dumps(tool_result)
-                        })
+                        }
+                        
+                        messages = await self.context_manager.add_message(
+                            tool_message,
+                            iteration
+                        )
                         
                         tool_observations.append(f"Tool '{function_call.name}' returned: {json.dumps(tool_result)}")
                     
-                    # 添加反思提示作为用户消息而不是系统消息
-                    reflection_prompt = (
-                        "Based on the tool results:\n" + 
-                        "\n".join(tool_observations) + "\n\n" +
-                        "Please analyze these results and decide:\n" +
-                        "1. What have we learned?\n" +
-                        "2. Do we need more information?\n" +
-                        "3. Are we ready for a Final Answer?\n"
-                    )
-                    
-                    messages.append({
+                    # 添加反思提示作为用户消息
+                    reflection_prompt = {
                         "role": "user",
-                        "content": reflection_prompt
-                    })
+                        "content": (
+                            "Based on the tool results:\n" + 
+                            "\n".join(tool_observations) + "\n\n" +
+                            "Please analyze these results and decide:\n" +
+                            "1. What have we learned?\n" +
+                            "2. Do we need more information?\n" +
+                            "3. Are we ready for a Final Answer?\n"
+                        )
+                    }
+                    
+                    messages = await self.context_manager.add_message(
+                        reflection_prompt,
+                        iteration
+                    )
                     
                 else:
                     # 如果没有工具调用且没有最终答案，添加提示继续思考
                     if "Final Answer:" not in content:
-                        messages.append({
+                        continue_prompt = {
                             "role": "user",
                             "content": (
                                 "You haven't used any tools or provided a Final Answer. "
                                 "Please either use tools to gather more information or "
                                 "provide a Final Answer if you have enough information."
                             )
-                        })
+                        }
+                        
+                        messages = await self.context_manager.add_message(
+                            continue_prompt,
+                            iteration
+                        )
                 
                 all_responses.append(response_entry)
                 
@@ -342,7 +423,7 @@ class AzureOpenAIMCPHost:
                     
                     # 写入助手响应
                     if 'content' in response:
-                        f.write(f"Assistant: {response['content']}\n")
+                        f.write(f"Assistant: \n\n{response['content']}\n\n")
                     
                     # 写入工具调用结果（如果有）
                     if response.get('tool_calls'):
