@@ -318,9 +318,36 @@ class AzureOpenAIMCPHost:
                 
                 # 检查是否达到最终答案 - 添加 None 检查
                 if content is not None and "Final Answer:" in content:
-                    response_entry["is_final"] = True
-                    all_responses.append(response_entry)
-                    break
+                    # 检查是否真的需要终止
+                    needs_more_analysis = False
+                    
+                    # 解析内容中的建议
+                    if "Do we need more information?" in content:
+                        analysis_lines = content.split('\n')
+                        for line in analysis_lines:
+                            if "need" in line.lower() and "more" in line.lower():
+                                if not line.lower().strip().startswith("no"):
+                                    needs_more_analysis = True
+                                    break
+                    
+                    if not needs_more_analysis:
+                        response_entry["is_final"] = True
+                        all_responses.append(response_entry)
+                        break
+                    else:
+                        # 如果需要更多分析，添加继续分析的提示
+                        continue_analysis_prompt = {
+                            "role": "user",
+                            "content": (
+                                "I notice that we still need more information or analysis. "
+                                "Please continue with the necessary tool calls or analysis "
+                                "before providing the final answer."
+                            )
+                        }
+                        messages = await self.context_manager.add_message(
+                            continue_analysis_prompt,
+                            iteration
+                        )
                 
                 # 处理工具调用
                 if assistant_message.tool_calls:
