@@ -302,116 +302,55 @@ class AzureOpenAIMCPHost:
                 assistant_message = response.choices[0].message
                 content = assistant_message.content
                 
-                # 创建当前迭代的响应条目
-                response_entry = {
-                    "iteration": iteration,
-                    "role": "assistant",
-                    "content": content,
-                    "tool_calls": None,
-                    "is_final": False
-                }
+                # 使用辅助方法创建响应条目
+                response_entry = self._create_response_entry(iteration, assistant_message)
 
                 messages = await self.context_manager.add_message(
                     assistant_message.model_dump(),
                     iteration
                 )
                 
-                # 检查是否达到最终答案 - 添加 None 检查
+                # 检查是否达到最终答案
                 if content is not None and "Final Answer:" in content:
-                    # 检查是否真的需要终止
-                    needs_more_analysis = False
-                    
-                    # 解析内容中的建议
-                    if "Do we need more information?" in content:
-                        analysis_lines = content.split('\n')
-                        for line in analysis_lines:
-                            if "need" in line.lower() and "more" in line.lower():
-                                if not line.lower().strip().startswith("no"):
-                                    needs_more_analysis = True
-                                    break
+                    needs_more_analysis = self._check_needs_more_analysis(content)
                     
                     if not needs_more_analysis:
                         response_entry["is_final"] = True
                         all_responses.append(response_entry)
                         break
                     else:
-                        # 如果需要更多分析，添加继续分析的提示
-                        continue_analysis_prompt = {
-                            "role": "user",
-                            "content": (
-                                "I notice that we still need more information or analysis. "
-                                "Please continue with the necessary tool calls or analysis "
-                                "before providing the final answer."
-                            )
-                        }
                         messages = await self.context_manager.add_message(
-                            continue_analysis_prompt,
+                            self._create_continue_analysis_prompt(),
                             iteration
                         )
                 
                 # 处理工具调用
                 if assistant_message.tool_calls:
                     response_entry["tool_calls"] = []
-                    tool_observations = []
+                    tool_results = []
                     
                     # 执行每个工具调用并收集结果
                     for tool_call in assistant_message.tool_calls:
-                        function_call = tool_call.function
-                        tool_args = json.loads(function_call.arguments)
-                        tool_result = await self._call_tool(function_call.name, tool_args)
-                        
-                        response_entry["tool_calls"].append({
-                            "tool_name": function_call.name,
-                            "tool_args": tool_args,
-                            "tool_result": tool_result
-                        })
-                        
-                        tool_message = {
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": function_call.name,
-                            "content": json.dumps(tool_result)
-                        }
+                        tool_result = await self._process_tool_call(tool_call, response_entry)
+                        tool_results.append(tool_result)
                         
                         messages = await self.context_manager.add_message(
-                            tool_message,
+                            tool_result,
                             iteration
                         )
-                        
-                        tool_observations.append(f"Tool '{function_call.name}' returned: {json.dumps(tool_result)}")
                     
-                    # 添加反思提示作为用户消息
-                    reflection_prompt = {
-                        "role": "user",
-                        "content": (
-                            "Based on the tool results:\n" + 
-                            "\n".join(tool_observations) + "\n\n" +
-                            "Please analyze these results and decide:\n" +
-                            "1. What have we learned?\n" +
-                            "2. Do we need more information?\n" +
-                            "3. Are we ready for a Final Answer?\n"
-                        )
-                    }
-                    
+                    # 使用辅助方法创建反思提示
+                    reflection_prompt = self._create_reflection_prompt(tool_results)
                     messages = await self.context_manager.add_message(
                         reflection_prompt,
                         iteration
                     )
                     
                 else:
-                    # 如果没有工具调用且没有最终答案，添加提示继续思考
+                    # 如果没有工具调用且没有最终答案
                     if "Final Answer:" not in content:
-                        continue_prompt = {
-                            "role": "user",
-                            "content": (
-                                "You haven't used any tools or provided a Final Answer. "
-                                "Please either use tools to gather more information or "
-                                "provide a Final Answer if you have enough information."
-                            )
-                        }
-                        
                         messages = await self.context_manager.add_message(
-                            continue_prompt,
+                            self._create_continue_prompt(),
                             iteration
                         )
                 
@@ -425,22 +364,75 @@ class AzureOpenAIMCPHost:
                     "error": error_msg
                 })
                 break
-                
+            
+        await self._write_results_to_file(user_query, all_responses)
+        return all_responses
+
+    # 新增的辅助方法
+    def _check_needs_more_analysis(self, content: str) -> bool:
+        """检查是否需要更多分析"""
+        if "Do we need more information?" in content:
+            analysis_lines = content.split('\n')
+            for line in analysis_lines:
+                if "need" in line.lower() and "more" in line.lower():
+                    if not line.lower().strip().startswith("no"):
+                        return True
+        return False
+
+    def _create_continue_analysis_prompt(self) -> Dict[str, Any]:
+        """创建继续分析提示"""
+        return {
+            "role": "user",
+            "content": (
+                "I notice that we still need more information or analysis. "
+                "Please continue with the necessary tool calls or analysis "
+                "before providing the final answer."
+            )
+        }
+
+    def _create_continue_prompt(self) -> Dict[str, Any]:
+        """创建继续思考提示"""
+        return {
+            "role": "user",
+            "content": (
+                "You haven't used any tools or provided a Final Answer. "
+                "Please either use tools to gather more information or "
+                "provide a Final Answer if you have enough information."
+            )
+        }
+
+    async def _process_tool_call(self, tool_call, response_entry: Dict[str, Any]) -> Dict[str, Any]:
+        """处理单个工具调用"""
+        function_call = tool_call.function
+        tool_args = json.loads(function_call.arguments)
+        tool_result = await self._call_tool(function_call.name, tool_args)
+        
+        response_entry["tool_calls"].append({
+            "tool_name": function_call.name,
+            "tool_args": tool_args,
+            "tool_result": tool_result
+        })
+        
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "name": function_call.name,
+            "content": json.dumps(tool_result)
+        }
+
+    async def _write_results_to_file(self, user_query: str, all_responses: List[Dict[str, Any]]):
+        """将结果写入文件"""
         try:
-            # 获取中国时间
             china_tz = pytz.timezone('Asia/Shanghai')
             current_time = datetime.now(china_tz)
             timestamp = current_time.strftime('%Y_%m_%d_%H_%M')
             
-            # 创建 outputs 目录（如果不存在）
             output_dir = "outputs"
             os.makedirs(output_dir, exist_ok=True)
             
-            # 生成输出文件名
             output_filename = f"{timestamp}_result_mcp_demo_using_reAct.txt"
             output_path = os.path.join(output_dir, output_filename)
             
-            # 写入结果
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(f"Query: {user_query}\n")
                 f.write("=" * 80 + "\n\n")
@@ -448,11 +440,9 @@ class AzureOpenAIMCPHost:
                 for response in all_responses:
                     f.write(f"--- Iteration {response['iteration']} ---\n")
                     
-                    # 写入助手响应
                     if 'content' in response:
                         f.write(f"Assistant: \n\n{response['content']}\n\n")
                     
-                    # 写入工具调用结果（如果有）
                     if response.get('tool_calls'):
                         f.write("\nTool Calls:\n")
                         for tool_call in response['tool_calls']:
@@ -460,13 +450,11 @@ class AzureOpenAIMCPHost:
                             f.write(f"Arguments: {json.dumps(tool_call['tool_args'], indent=2, ensure_ascii=False)}\n")
                             f.write(f"Result: {json.dumps(tool_call['tool_result'], indent=2, ensure_ascii=False)}\n")
                     
-                    # 写入错误信息（如果有）
                     if 'error' in response:
                         f.write(f"\nERROR: {response['error']}\n")
                     
                     f.write("\n" + "=" * 80 + "\n\n")
                 
-                # 写入总结信息
                 f.write(f"\nTotal iterations: {len(all_responses)}\n")
                 f.write(f"Timestamp: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}\n")
             
@@ -474,8 +462,6 @@ class AzureOpenAIMCPHost:
             
         except Exception as e:
             logger.error(f"Error writing results to file: {str(e)}")
-        
-        return all_responses
         
     async def disconnect(self) -> None:
         """清理连接资源"""
