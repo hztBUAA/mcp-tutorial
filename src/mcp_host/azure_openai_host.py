@@ -14,6 +14,7 @@ from mcp_host.prompts import SYSTEM_PROMPT
 from mcp_host.context_manager import ContextManager
 from datetime import datetime
 import pytz
+import re
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("azure_openai_mcp_host")
@@ -312,9 +313,16 @@ class AzureOpenAIMCPHost:
                 
                 # 检查是否达到最终答案
                 if content is not None and "Final Answer:" in content:
+                    # 首先检查所有必要章节是否完整
+                    sections_complete = all(
+                        self._is_section_complete(content, section)
+                        for section in ['what_learned', 'need_more', 'ready_final']
+                    )
+                    
+                    # 然后检查是否需要更多分析
                     needs_more_analysis = self._check_needs_more_analysis(content)
                     
-                    if not needs_more_analysis:
+                    if sections_complete and not needs_more_analysis:
                         response_entry["is_final"] = True
                         all_responses.append(response_entry)
                         break
@@ -370,14 +378,136 @@ class AzureOpenAIMCPHost:
 
     # 新增的辅助方法
     def _check_needs_more_analysis(self, content: str) -> bool:
-        """检查是否需要更多分析"""
-        if "Do we need more information?" in content:
-            analysis_lines = content.split('\n')
-            for line in analysis_lines:
-                if "need" in line.lower() and "more" in line.lower():
-                    if not line.lower().strip().startswith("no"):
-                        return True
-        return False
+        """
+        检查是否需要更多分析，采用多重判断策略：
+        1. 结构化分析：检查是否包含特定的章节标记
+        2. 关键词分析：多语言关键词匹配
+        3. 上下文分析：检查是否有明确的后续计划或待办事项
+        """
+        # 1. 结构化分析
+        has_final_section = bool(re.search(r'(Final Answer|最终答案|最后答案|总结|Summary)[:：]', content))
+        if not has_final_section:
+            return True
+        
+        # 2. 多语言关键词匹配
+        need_more_patterns = [
+            # 英文关键词
+            r'need.+more',
+            r'further.+(?:analysis|information|data)',
+            r'additional.+(?:analysis|information|data)',
+            r'not.+(?:ready|complete|enough)',
+            # 中文关键词
+            r'需要.+(?:更多|进一步|补充)',
+            r'还.+(?:不够|不完整)',
+            r'继续.+(?:分析|研究)',
+            r'深入.+(?:分析|研究)',
+            # 计划相关关键词
+            r'next.+step',
+            r'plan.+to',
+            r'下一步',
+            r'接下来',
+            r'计划'
+        ]
+        
+        # 3. 上下文分析
+        context_patterns = [
+            # 检查是否存在明确的后续计划或列表
+            r'^\s*\d+\.',  # 数字列表
+            r'^\s*[•\-\*]',  # 项目符号列表
+            # 检查是否有明确的待办事项
+            r'todo',
+            r'plan',
+            r'next',
+            r'待办',
+            r'计划',
+            # 检查是否提到需要获取更多信息
+            r'获取',
+            r'collect',
+            r'gather',
+            r'analyze',
+            r'研究',
+            r'分析'
+        ]
+        
+        # 将内容按行分割进行分析
+        lines = content.lower().split('\n')
+        
+        # 在最后N行中检查是否有继续分析的迹象
+        last_n_lines = lines[-5:]  # 检查最后5行
+        last_section = '\n'.join(last_n_lines)
+        
+        # 检查是否存在需要更多分析的模式
+        for pattern in need_more_patterns:
+            if re.search(pattern, content.lower()):
+                return True
+            
+        # 在最后部分检查是否有上下文模式
+        for pattern in context_patterns:
+            if re.search(pattern, last_section):
+                return True
+            
+        # 检查是否包含问题或疑问句
+        if re.search(r'[?？]', last_section):
+            return True
+        
+        # 检查是否包含明确的结束语
+        conclusion_patterns = [
+            r'(conclusion|结论|总结)[:：].*(?:完整|complete|done|finished)',
+            r'(no.+(?:further|more|additional)|不需要.+更多)',
+            r'(ready|准备好).+(?:final|conclude|总结)',
+        ]
+        
+        has_conclusion = any(re.search(pattern, content.lower()) for pattern in conclusion_patterns)
+        if has_conclusion:
+            return False
+        
+        # 默认需要更多分析
+        # 这是一个保守的策略，除非明确表示完成，否则继续分析
+        return True
+
+    def _is_section_complete(self, content: str, section_name: str) -> bool:
+        """
+        检查特定章节是否完整
+        """
+        # 通用的章节标记模式
+        section_patterns = {
+            'what_learned': [
+                r'(?:what.+learned|学到.+什么|总结发现)',
+                r'(?:findings|发现|结果)'
+            ],
+            'need_more': [
+                r'(?:need.+more|是否需要.+信息|是否需要.+分析)',
+                r'(?:additional|更多|补充)'
+            ],
+            'ready_final': [
+                r'(?:ready.+final|准备.+最终|可以.+总结)',
+                r'(?:conclude|总结|结论)'
+            ]
+        }
+        
+        if section_name not in section_patterns:
+            return False
+        
+        patterns = section_patterns[section_name]
+        section_exists = any(re.search(pattern, content.lower()) for pattern in patterns)
+        
+        if not section_exists:
+            return False
+        
+        # 检查章节内容是否为空或过短
+        section_content = re.split(r'\n+(?=\w)', content.lower())
+        relevant_sections = [s for s in section_content if any(re.search(pattern, s) for pattern in patterns)]
+        
+        if not relevant_sections:
+            return False
+        
+        # 检查章节内容是否包含实质性信息
+        section_text = relevant_sections[0]
+        # 排除只有标题的情况
+        if len(section_text.split('\n')) <= 1:
+            return False
+        
+        return True
 
     def _create_continue_analysis_prompt(self) -> Dict[str, Any]:
         """创建继续分析提示"""
