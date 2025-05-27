@@ -82,7 +82,7 @@ class MCPCommandLineClient:
             responses = await self.host.process_query(query)
             if responses:
                 logger.info(f"Received {len(responses)} responses")
-                self._display_responses(responses)
+                # self._display_responses(responses)
             else:
                 logger.warning("No responses received from server")
                 print("No responses received from server")

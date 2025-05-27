@@ -191,7 +191,7 @@ class AzureOpenAIMCPHost:
                         })
                     # 可以根据需要添加其他类型的处理（ImageContent, EmbeddedResource等）
                 
-                logger.info(f"Tool {tool_name} returned: {serializable_content}")
+                logger.info(f"Tool {tool_name} returned: {serializable_content[0]['text'][:20]}")
                 return {
                     "content": serializable_content,
                     "isError": result.isError

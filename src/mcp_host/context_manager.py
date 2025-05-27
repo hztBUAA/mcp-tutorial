@@ -131,13 +131,44 @@ class ContextManager:
 
         # 收集需要压缩的消息
         messages_to_compress = []
-        for msg in self.messages:
+        current_group = []
+        tool_calls_count = 0
+        
+        for msg in reversed(self.messages):
             if msg == self.system_prompt or msg == last_user_message:
                 continue
-            messages_to_compress.append(msg)
+            
+            if msg["role"] == "assistant":
+                if "tool_calls" in msg and msg["tool_calls"]:
+                    # 新的工具调用组开始
+                    if current_group:
+                        messages_to_compress = current_group + messages_to_compress
+                    current_group = [msg]
+                    tool_calls_count = len(msg["tool_calls"])
+                else:
+                    # 普通assistant消息
+                    if current_group:
+                        messages_to_compress = current_group + messages_to_compress
+                    messages_to_compress.insert(0, msg)
+                    current_group = []
+                    tool_calls_count = 0
+            elif msg["role"] == "tool" and current_group:
+                current_group.append(msg)
+            
+            # 当工具调用组收集完整时，添加到压缩列表
+            if current_group and len(current_group) > 1 and len(current_group) >= tool_calls_count:
+                messages_to_compress = current_group + messages_to_compress
+                current_group = []
+                tool_calls_count = 0
 
+        # 添加最后未处理的组
+        if current_group:
+            messages_to_compress = current_group + messages_to_compress
+
+        # 即使消息为空也要继续压缩流程，返回基础上下文
         if not messages_to_compress:
-            return self.messages
+            logger.info("没有可压缩的消息，返回基础上下文")
+            return compressed_context + ([last_user_message] if last_user_message else [])
 
         # 计算压缩提示的基础token数
         base_prompt = """请将对话历史压缩为一条全面但简洁的总结，包括：
@@ -148,9 +179,9 @@ class ContextManager:
 对话历史："""
         
         base_tokens = len(self.encoding.encode(base_prompt))
-        available_tokens = self.token_limit - base_tokens - 1000  # 预留1000个token的余量
+        available_tokens = self.token_limit * self.token_threshold - base_tokens - 1000  # 预留1000个token的余量
         
-        # 从后向前截取消息，确保不超出token限制
+        # 从后向前选择完整的消息组
         selected_messages = []
         current_tokens = 0
         
