@@ -217,30 +217,30 @@ class AzureOpenAIMCPHost:
             "is_final": False
         }
 
-    async def _handle_tool_calls(self, tool_calls, response_entry) -> List[Dict[str, Any]]:
-        """处理工具调用"""
-        tool_results = []
-        response_entry["tool_calls"] = []
+    # async def _handle_tool_calls(self, tool_calls, response_entry) -> List[Dict[str, Any]]:
+    #     """处理工具调用"""
+    #     tool_results = []
+    #     response_entry["tool_calls"] = []
         
-        for tool_call in tool_calls:
-            function_call = tool_call.function
-            tool_args = json.loads(function_call.arguments)
-            tool_result = await self._call_tool(function_call.name, tool_args)
+    #     for tool_call in tool_calls:
+    #         function_call = tool_call.function
+    #         tool_args = json.loads(function_call.arguments)
+    #         tool_result = await self._call_tool(function_call.name, tool_args)
             
-            response_entry["tool_calls"].append({
-                "tool_name": function_call.name,
-                "tool_args": tool_args,
-                "tool_result": tool_result
-            })
+    #         response_entry["tool_calls"].append({
+    #             "tool_name": function_call.name,
+    #             "tool_args": tool_args,
+    #             "tool_result": tool_result
+    #         })
             
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": function_call.name,
-                "content": json.dumps(tool_result)
-            })
+    #         tool_results.append({
+    #             "role": "tool",
+    #             "tool_call_id": tool_call.id,
+    #             "name": function_call.name,
+    #             "content": json.dumps(tool_result)
+    #         })
         
-        return tool_results
+    #     return tool_results
 
     def _create_reflection_prompt(self, tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """创建反思提示"""
