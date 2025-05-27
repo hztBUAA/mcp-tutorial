@@ -50,10 +50,11 @@ class AzureOpenAIMCPHost:
         self.tools: List[Union[types.Tool, types.Resource]] = []
         
         self.context_manager = ContextManager(
-            max_messages=10,
+            deployment_name=self.deployment_name,
+            token_limit=128000,
+            token_threshold=0.8,
             compression_interval=5,
-            openai_client=self.client,
-            deployment_name=self.deployment_name
+            openai_client=self.client
         )
         
     async def connect_to_server(self, server_command: Optional[List[str]] = None, 
