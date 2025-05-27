@@ -101,24 +101,19 @@ class ContextManager:
         
         logger.info(f"当前token数: {current_tokens}/{self.token_limit} (阈值: {token_threshold})")
         
-        # 结合token数量和迭代次数的压缩策略
-        should_compress = False
-        compression_reason = []
-        
-        # 检查token数量
-        if current_tokens > token_threshold:
-            should_compress = True
-            compression_reason.append(f"token数量({current_tokens})超过阈值({token_threshold})")
-            
-        # 检查迭代次数
+        # 只在达到压缩间隔时检查是否需要压缩
         if iteration > 0 and iteration % self.compression_interval == 0:
-            should_compress = True
-            compression_reason.append(f"达到压缩间隔({self.compression_interval}轮)")
-            
-        if should_compress:
-            logger.info(f"触发压缩，原因: {', '.join(compression_reason)}")
+            if current_tokens > token_threshold:
+                logger.info(f"触发压缩，原因: token数量({current_tokens})超过阈值({token_threshold})")
+                return await self._compress_context()
+            else:
+                logger.info(f"达到压缩间隔({self.compression_interval}轮)但token数({current_tokens})未超过阈值({token_threshold})，不进行压缩")
+        
+        # 如果token数超出限制，强制压缩
+        elif current_tokens > self.token_limit:
+            logger.warning(f"token数量({current_tokens})超出限制({self.token_limit})，强制压缩")
             return await self._compress_context()
-            
+        
         return self.messages
     
     async def _compress_context(self) -> List[Dict[str, Any]]:
@@ -148,8 +143,8 @@ class ContextManager:
         summary_prompt = {
             "role": "user",
             "content": f"""请将以下对话历史压缩为一条全面但简洁的总结，包括：
-1. 已经发现的关键信息
-2. 重要的工具调用结果
+1. 已经发现的关键信息。
+2. 重要的工具调用记录，包括工具名称，调用方式以及精简的调用结果。调用方式中的参数需要用json格式化。
 3. 当前的推理进展和结论
 
 对话历史：

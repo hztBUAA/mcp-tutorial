@@ -245,7 +245,7 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "scholar_id": {"type": "string", "description": "学者ID"},
+                    "scholar_id": {"type": "string", "description": "学者ID。不能直接用学者名字，需要先搜索学者，获取学者ID。"},
                 },
                 "required": ["scholar_id"],
             },
@@ -256,7 +256,7 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "scholar_id": {"type": "string", "description": "学者ID"},
+                    "scholar_id": {"type": "string", "description": "学者ID。不能直接用学者名字，需要先搜索学者，获取学者ID。"},
                 },
                 "required": ["scholar_id"],
             },
@@ -308,7 +308,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     "scholar_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "学者ID列表"
+                        "description": "学者ID列表。"
                     },
                 },
                 "required": ["scholar_ids"],
