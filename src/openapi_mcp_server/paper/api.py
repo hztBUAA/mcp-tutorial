@@ -15,7 +15,7 @@ class PaperAPI:
         authors: List[Dict[str, str]],
         start_time: str,
         end_time: str,
-        page_size: int = 50
+        page_size: int = 10
     ) -> Dict:
         """普通版搜索论文
         
@@ -43,7 +43,7 @@ class PaperAPI:
         question: str,
         start_time: str,
         end_time: str,
-        page_size: int = 50,
+        page_size: int = 10,
         rerank: int = 0
     ) -> Dict:
         """加强版搜索论文
@@ -77,7 +77,7 @@ class PaperAPI:
         question: str,
         start_time: str,
         end_time: str,
-        page_size: int = 50,
+        page_size: int = 10,
         rerank: int = 0
     ) -> Dict:
         """语料pro1.0版本搜索论文
@@ -113,7 +113,7 @@ class PaperAPI:
         question: str,
         start_time: str,
         end_time: str,
-        page_size: int = 50
+        page_size: int = 10
     ) -> Dict:
         """语料pro2.0版本搜索论文
         

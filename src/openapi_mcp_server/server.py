@@ -283,7 +283,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "page_size": {
                         "type": "integer",
-                        "description": "每页数量，默认20"
+                        "description": "每页数量，默认10"
                     },
                     "source": {
                         "type": "string",
@@ -322,7 +322,7 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "scholar_id": {"type": "string", "description": "学者ID"},
                     "page": {"type": "integer", "description": "页码，默认1"},
-                    "size": {"type": "integer", "description": "每页数量，默认20"},
+                    "size": {"type": "integer", "description": "每页数量，默认10"},
                     "sort": {"type": "integer", "description": "排序方式：1-最新发表时间 2-引用数 3-被引用，默认1"}
                 },
                 "required": ["scholar_id"],
@@ -471,7 +471,7 @@ async def handle_call_tool(
                 scholar_ids=arguments.get("scholar_ids", []),
                 name=arguments.get("name", ""),
                 page=arguments.get("page", 1),
-                page_size=arguments.get("page_size", 20),
+                page_size=arguments.get("page_size", 10),
                 source=arguments.get("source", "mix_search"),
                 search_source=arguments.get("search_source", "mix_search")
             )
@@ -485,7 +485,7 @@ async def handle_call_tool(
             result = bor_api.scholar.get_scholar_papers(
                 scholar_id=arguments["scholar_id"],
                 page=arguments.get("page", 1),
-                size=arguments.get("size", 20),
+                size=arguments.get("size", 10),
                 sort=arguments.get("sort", 1)
             )
             return [types.TextContent(type="text", text=f"学者论文列表: {result}")]
@@ -510,7 +510,7 @@ async def handle_call_tool(
                 authors=arguments["authors"],
                 start_time=arguments["start_time"],
                 end_time=arguments["end_time"],
-                page_size=arguments.get("page_size", 50)
+                page_size=arguments.get("page_size", 10)
             )
             return [types.TextContent(type="text", text=f"普通版搜索结果: {result}")]
 
@@ -520,7 +520,7 @@ async def handle_call_tool(
                 question=arguments["question"],
                 start_time=arguments["start_time"],
                 end_time=arguments["end_time"],
-                page_size=arguments.get("page_size", 50),
+                page_size=arguments.get("page_size", 10),
                 rerank=arguments.get("rerank", 0)
             )
             return [types.TextContent(type="text", text=f"加强版搜索结果: {result}")]
@@ -532,7 +532,7 @@ async def handle_call_tool(
                 question=arguments["question"],
                 start_time=arguments["start_time"],
                 end_time=arguments["end_time"],
-                page_size=arguments.get("page_size", 50),
+                page_size=arguments.get("page_size", 10),
                 rerank=arguments.get("rerank", 0)
             )
             return [types.TextContent(type="text", text=f"Pro1.0搜索结果: {result}")]
@@ -544,7 +544,7 @@ async def handle_call_tool(
                 question=arguments["question"],
                 start_time=arguments["start_time"],
                 end_time=arguments["end_time"],
-                page_size=arguments.get("page_size", 50)
+                page_size=arguments.get("page_size", 10)
             )
             return [types.TextContent(type="text", text=f"Pro2.0搜索结果: {result}")]
 
@@ -720,7 +720,7 @@ async def main():
     logger.info("正在启动 Starlette 应用...")
     config = uvicorn.Config(
         app=app,
-        host="0.0.0.0",
+        host="localhost",
         port=8000,
         log_level="info"
     )

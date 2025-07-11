@@ -26,7 +26,7 @@ class ScholarAPI:
             params={"scholarId": scholar_id}
         )
     
-    def get_scholar_coauthors(self, scholar_id: str, page: int = 1, page_size: int = 20) -> Dict:
+    def get_scholar_coauthors(self, scholar_id: str, page: int = 1, page_size: int = 10) -> Dict:
         """获取学者合作作者列表
         
         Args:
@@ -52,7 +52,7 @@ class ScholarAPI:
         scholar_ids: List[str],
         name: str,
         page: int = 1,
-        page_size: int = 20,
+        page_size: int = 10,
         source: str = "mix_search",
         search_source: str = "mix_search"
     ) -> Dict:
@@ -89,7 +89,7 @@ class ScholarAPI:
             data={"scholarIds": scholar_ids}
         )
     
-    def get_scholar_papers(self, scholar_id: str, page: int = 1, size: int = 20, sort: int = 1) -> Dict:
+    def get_scholar_papers(self, scholar_id: str, page: int = 1, size: int = 10, sort: int = 1) -> Dict:
         """获取学者论文列表
         
         Args:

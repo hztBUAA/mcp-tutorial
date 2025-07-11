@@ -49,8 +49,8 @@ class AzureOpenAIMCPHost:
         self.tools: List[Union[types.Tool, types.Resource]] = []
         
         self.context_manager = ContextManager(
-            max_messages=10,
-            compression_interval=5,
+            max_messages=5,
+            compression_interval=2,
             openai_client=self.client,
             deployment_name=self.deployment_name
         )

@@ -103,7 +103,7 @@ class ContextManager:
                 }
 
             try:
-                response = await self.openai_client.chat.completions.create(
+                response = self.openai_client.chat.completions.create(
                     model=self.deployment_name,
                     messages=[summary_prompt],
                     temperature=0.3
